@@ -9,7 +9,7 @@ use alacritty_config::SerdeReplace;
 use alacritty_terminal::term::Config as TermConfig;
 use alacritty_terminal::tty::{Options as PtyOptions, Shell};
 use log::{error, warn};
-use serde::de::{self, Error as SerdeError, MapAccess, Unexpected, Visitor};
+use serde::de::{Error as SerdeError, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer};
 use unicode_width::UnicodeWidthChar;
 use winit::event::MouseButton;
@@ -280,7 +280,7 @@ impl Default for Hints {
                 action,
                 persist: false,
                 post_processing: true,
-                mouse: Some(HintMouse { mods: Default::default(), button: Default::default() }),
+                mouse: Default::default(),
                 binding: Some(HintBinding {
                     key: BindingKey::Keycode {
                         key: Key::Character("o".into()),
@@ -472,103 +472,53 @@ pub struct HintBinding {
 }
 
 /// Hint mouse highlighting.
-#[derive(ConfigDeserialize, Default, Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(ConfigDeserialize, Copy, Clone, Debug, PartialEq, Eq)]
 pub struct HintMouse {
     /// Required mouse modifiers for hint highlighting.
     pub mods: ModsWrapper,
 
     /// Mouse button which triggers the command.
     #[config(alias = "enabled")]
-    pub button: HintMouseButton,
+    button: Option<HintMouseButton>,
+}
+
+impl Default for HintMouse {
+    fn default() -> Self {
+        HintMouse {
+            mods : Default::default(),
+            button : Some(Default::default())
+        }
+    }
 }
 
 impl HintMouse {
     pub fn enabled(self) -> bool {
-        self.button != HintMouseButton(None)
+        match self.button {
+            None => false,
+            Some(HintMouseButton::Button(_)) => true,
+            Some(HintMouseButton::Enabled(enebled)) => enebled
+        }
+    }
+
+    pub fn button(self) -> Option<MouseButton> {
+        match self.button {
+            None | Some(HintMouseButton::Enabled(false)) => None,
+            Some(HintMouseButton::Enabled(true)) => Some(MouseButton::Left),
+            Some(HintMouseButton::Button(button)) => Some(button)
+        }
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct HintMouseButton(pub Option<MouseButton>);
-
-impl<'a> Deserialize<'a> for HintMouseButton {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'a>,
-    {
-        struct MouseButtonVisitor;
-
-        impl Visitor<'_> for MouseButtonVisitor {
-            type Value = HintMouseButton;
-
-            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                f.write_str(
-                    "true, false, \"Left\", \"Right\", \"Middle\", \"Back\", \"Forward\", a \
-                     number from 0 to 65536, or \"None\"",
-                )
-            }
-
-            fn visit_i64<E>(self, value: i64) -> Result<HintMouseButton, E>
-            where
-                E: de::Error,
-            {
-                match value {
-                    0..=65536 => Ok(HintMouseButton(Some(MouseButton::Other(value as u16)))),
-                    _ => Err(E::invalid_value(Unexpected::Signed(value), &self)),
-                }
-            }
-
-            fn visit_u64<E>(self, value: u64) -> Result<HintMouseButton, E>
-            where
-                E: de::Error,
-            {
-                match value {
-                    0..=65536 => Ok(HintMouseButton(Some(MouseButton::Other(value as u16)))),
-                    _ => Err(E::invalid_value(Unexpected::Unsigned(value), &self)),
-                }
-            }
-
-            fn visit_str<E>(self, value: &str) -> Result<HintMouseButton, E>
-            where
-                E: de::Error,
-            {
-                match value {
-                    "None" => Ok(HintMouseButton(None)),
-                    "Left" => Ok(HintMouseButton(Some(MouseButton::Left))),
-                    "Right" => Ok(HintMouseButton(Some(MouseButton::Right))),
-                    "Middle" => Ok(HintMouseButton(Some(MouseButton::Middle))),
-                    "Back" => Ok(HintMouseButton(Some(MouseButton::Back))),
-                    "Forward" => Ok(HintMouseButton(Some(MouseButton::Forward))),
-                    _ => Err(E::invalid_value(Unexpected::Str(value), &self)),
-                }
-            }
-
-            fn visit_bool<E>(self, value: bool) -> Result<HintMouseButton, E>
-            where
-                E: de::Error,
-            {
-                match value {
-                    false => Ok(HintMouseButton(None)),
-                    true => Ok(HintMouseButton(Some(MouseButton::Left))),
-                }
-            }
-        }
-
-        deserializer.deserialize_any(MouseButtonVisitor)
-    }
+#[derive(SerdeReplace, Deserialize, Copy, Clone, Debug, PartialEq, Eq)]
+#[serde(untagged)]
+pub enum HintMouseButton {
+    Button(MouseButton),
+    Enabled(bool)
 }
 
 impl Default for HintMouseButton {
     fn default() -> Self {
-        Self(Some(MouseButton::Left))
-    }
-}
-
-impl SerdeReplace for HintMouseButton {
-    fn replace(&mut self, value: toml::Value) -> Result<(), Box<dyn Error>> {
-        *self = Self::deserialize(value)?;
-
-        Ok(())
+        HintMouseButton::Button(MouseButton::Left)
     }
 }
 

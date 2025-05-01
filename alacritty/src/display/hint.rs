@@ -228,7 +228,7 @@ impl HintMatch {
 
     /// Returns the mouse button that is associated with the hint.
     pub fn mouse_button(&self) -> Option<MouseButton> {
-        self.hint.mouse.and_then(|hint_mouse| hint_mouse.button.0)
+        self.hint.mouse.and_then(|hint_mouse| hint_mouse.button())
     }
 
     /// Get the text content of the hint match.
